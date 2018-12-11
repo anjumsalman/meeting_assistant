@@ -1,0 +1,15 @@
+doctype html
+html
+    head
+        title Login to Meeting Hub
+        link(rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans:400,700')
+        link(rel='stylesheet', href='assets/css/login-style.css')
+    body
+        form(action="login" method="post")
+            h3 Login
+
+            if(message)
+                p.flash #{message}
+            input(type="text" name="psid" placeholder="Id")
+            input(type="password" name="password" placeholder="Password")
+            button(type="submit") Login

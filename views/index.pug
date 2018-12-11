@@ -1,0 +1,37 @@
+doctype html
+html
+    head
+        title Meeting Hub Dashboard
+        link(rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans:400,700')
+        link(rel='stylesheet', href='/assets/css/index-style.css')
+    body
+        nav.top-nav
+            h3 Meeting Hub
+            a(href="/logout")
+                button.logout Logout
+
+        div.history-container
+            h4 History
+            each meeting in meetings
+                div.meeting-item
+                    b Subject: 
+                    span= meeting.subject
+                    br
+                    b Location: 
+                    span= meeting.location
+                    br
+                    b Date/Time: 
+                    span= meeting.datetime_
+                    br
+                    b Status: 
+                    span= meeting.status
+                    if(meeting.status=='N')
+                        form(action='meeting/new/'+meeting.id method='post')
+                            input(name='subject' value=meeting.subject hidden)
+                            input(name='location' value=meeting.location hidden)
+                            input(name='datetime' value=meeting.datetime_ hidden)
+                            input(name='agenda' value=meeting.agenda hidden)
+                            input(type='submit' value='Start Meeting')
+                    else
+                        a(href='/meeting/details/'+meeting.id)
+                            button Details

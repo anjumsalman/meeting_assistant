@@ -1,0 +1,37 @@
+doctype html
+html
+    head
+        title New Meeting
+        link(rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans:400,700')
+        link(rel='stylesheet', href='/assets/css/meeting-style.css')
+    body
+        nav.top-nav
+            h3 Meeting Hub
+            button.meeting-start Start Meeting
+            a(href='/logout')
+                button.logout Logout
+
+        div.meeting-details
+            b #{subject}
+            br
+            p Location: #{location}
+            p Status: #{status}
+            each participant in participants
+                span.participant= participant.name 
+
+        div.grid-container        
+            div.transcript-container
+                h4 Meeting Transcript
+                div.transcript-text
+                div.transcript-controls
+                    button.transcript-stop Stop Transcript
+            div.reminder-container
+                h4 Reminders
+                each reminder in agenda
+                    div.reminder-item
+                        span= reminder
+            div.notes-container
+                h4 Meeting Notes
+
+        script(src='/assets/js/socket.io.slim.js')
+        script(src='/assets/js/client.js')
