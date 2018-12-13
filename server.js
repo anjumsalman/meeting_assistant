@@ -15,8 +15,22 @@ let connection_details = {
     database: 'codegrind'
 }
 
+// Nodemailer
+const nodemailer = require('nodemailer');
+let transporter = nodemailer.createTransport({
+ service: 'gmail',
+ auth: {
+        user: 'meetinghubcodegrind@gmail.com',
+        pass: 'meetinghub123'
+    }
+});
+
 const conn = mysql.createConnection(connection_details);
 conn.connect();
+
+// DialogFlow
+const dialogflow = require('dialogflow').v2beta1;
+const uuid = require('uuid');
 
 // Google Cloud setup
 const speechApi = require('@google-cloud/speech').v1p1beta1;
@@ -26,6 +40,7 @@ const speechClient = new speechApi.SpeechClient();
 const app = express();
 const server = http.createServer(app);
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 app.use(flash());
 app.use(session({ cookie: { maxAge: 60000 }, 
     secret: 't0P_sEcrt',
@@ -135,6 +150,19 @@ app.post('/meeting/new/:id', (req, res)=>{
     }
 });
 
+app.post('/assistant', (req, res)=>{
+    let queryText = req.body.query;
+    console.log('Assistant required for query ', queryText);
+    dialog(res, queryText, 'codegrind-223715');
+});
+
+app.post('/meeting/end', (req, res)=>{
+    let notes = req.body.notes;
+    let actionItems = req.body.actionItems;
+    let text = 'Notes:<br>' + notes + '<br>Action Items<br>' + actionItems;
+    sendMail('anjum.salman@outlook.com', text);
+});
+
 /*--------- Socket IO ---------*/
 io.on('connection', (socket)=>{
     console.log('Socket connection made');
@@ -183,7 +211,7 @@ io.on('connection', (socket)=>{
 
             if(data.results[0] && data.results[0].isFinal) {
                 stopRecognitionStream();
-                startRecognitionStream(client);
+                startRecognitionStream(socket);
             }
         });
     }
@@ -197,7 +225,7 @@ io.on('connection', (socket)=>{
     }
 });
 
-server.listen(3000);
+server.listen(4000);
 
 // Database functions
 function doLoginAction(psid, password, success, failure){
@@ -247,5 +275,53 @@ function getParticipants(meeting_id, success){
     conn.query(sql, [meeting_id], (err, rows, fields)=>{
         if(rows.length>0)
             success(rows);
+    });
+}
+
+// Dailog Responses
+async function dialog(res, textData, projectId){
+    // A unique identifier for the given session
+    const sessionId = uuid.v4();
+
+    // Create a new session
+    const sessionClient = new dialogflow.SessionsClient();
+    const sessionPath = sessionClient.sessionPath(projectId, sessionId);
+
+    // The text query request.
+    console.log('Your query is ', textData);
+    const request = {
+        session: sessionPath,
+        queryInput: {
+            text: {
+                text: textData,
+                languageCode: 'en-IN',
+            },
+        },
+        output_audio_config:{
+            audio_encoding: 'OUTPUT_AUDIO_ENCODING_LINEAR_16'
+        }
+    };
+
+    // Send request and log result
+    const responses = await sessionClient.detectIntent(request);
+    const result = responses[0];
+    console.log(responses[0]);
+    res.json({'response': result});
+}
+
+// Send mail
+function sendMail(to_, content_){
+    const mailOptions = {
+      from: 'meetinghubcodegrind@gnail.com', // sender address
+      to: to_, // list of receivers
+      subject: 'Meeting Hub', // Subject line
+      html: content_// plain text body
+    };
+
+    transporter.sendMail(mailOptions, function (err, info) {
+       if(err)
+         console.log(err);
+       else
+         console.log(info);
     });
 }

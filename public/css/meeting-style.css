@@ -36,7 +36,7 @@ button:hover{
 
 div.grid-container{
     display: grid;
-    grid-template-columns: 400px 300px 300px;
+    grid-template-columns: 400px 250px 250px 250px;
     grid-gap: 10px;
     padding: 0 20px;
 }
@@ -54,6 +54,12 @@ div.reminder-container{
 }
 
 div.notes-container{
+    padding: 10px;
+    margin-top: 20px;
+    background-color: rgb(93.3%, 92.1%, 88.5%); 
+}
+
+div.actions-container{
     padding: 10px;
     margin-top: 20px;
     background-color: rgb(93.3%, 92.1%, 88.5%); 
@@ -87,4 +93,16 @@ span.participant{
     font-size: 12px;
     margin-top: 10px;
     border-radius: 5px;
+}
+
+div.transcript-text{
+    font-size: 12px;
+}
+
+div.notes-list{
+    font-size: 14px;
+}
+
+button.meeting-end{
+    background-color: red;    
 }

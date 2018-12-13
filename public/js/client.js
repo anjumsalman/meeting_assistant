@@ -1,5 +1,8 @@
 const socket = io.connect();
 let startTime = new Date().getTime();
+let lastSpeaker;
+let startNote = false;
+let startActionItem = false;
 
 // Audiostream configuration
 const constraints = {
@@ -11,10 +14,14 @@ const constraints = {
 let startButton = document.querySelector('.meeting-start');
 let stopButton = document.querySelector('.transcript-stop');
 let transcriptBody = document.querySelector('.transcript-text');
+let notesListDiv = document.querySelector('.notes-list');
+let actionItemsDiv = document.querySelector('.action-items');
+let endMeetingButton = document.querySelector('.meeting-end');
 let reminderDivs = [];
 let reminderWords = [];
 let participantSpans = [];
 let participantNames = [];
+
 
 let context, processor, input, globalStream;
 
@@ -61,9 +68,39 @@ function microphoneProcess(e) {
 
 // Socket Events
 socket.on('textData', (data)=>{
-    console.log(data);
-    transcriptBody.innerHTML += data.results[0].alternatives[0].transcript;
-    //transcriptBody.innerHTML = transformTextData(data.results[0].alternatives[0].words);
+    console.log(data.results[0].alternatives[0].words);
+    
+    // Speaker identification
+    let speakerTag = associateSpeaker(data);
+    if(!lastSpeaker){
+        lastSpeaker = speakerTag;
+        transcriptBody.innerHTML += '<b>Speaker ' + speakerTag + ':</b> ' + 
+        data.results[0].alternatives[0].transcript;
+    }else{
+        if(speakerTag == lastSpeaker){
+            transcriptBody.innerHTML += '. ' + 
+                data.results[0].alternatives[0].transcript;
+        }else{
+            transcriptBody.innerHTML += '<br><b>Speaker ' + speakerTag + ':</b> ' + 
+                data.results[0].alternatives[0].transcript;
+        }
+    }
+    lastSpeaker = speakerTag;
+
+    // Assistant Logic
+    let transcript = data.results[0].alternatives[0].transcript;
+    if(transcript.toUpperCase().startsWith('ASSISTANT')){
+        jQuery.ajax({
+            type: 'POST',
+            url: '/assistant',
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({'query': transcript}),
+            success: function(response){
+                decideAndDo(response);
+            }
+        });
+    }
 
     // Colorise reminder if reminded
     let freqArray = wordFrequency(transcriptBody.innerHTML, reminderWords, 4);
@@ -88,6 +125,18 @@ socket.on('textData', (data)=>{
             }
         }
     }
+
+    // Take note
+    if(startNote){
+        notesListDiv.innerHTML += transcript + '<br>';
+        startNote = false;
+    }
+
+    // ActionItem
+    if(startActionItem){
+        actionItemsDiv.innerHTML += transcript + '<br>';
+        startActionItem = false;
+    }
 })
 
 // UI Events
@@ -97,6 +146,10 @@ startButton.addEventListener('click', (e)=>{
 
 stopButton.addEventListener('click', (e)=>{
     socket.emit('speechEnd', '');
+});
+
+endMeetingButton.addEventListener('click', (e)=>{
+    endMeeting();
 });
 
 // Helper Functions
@@ -147,6 +200,29 @@ function transformTextData(textArray){
     return text;
 }
 
+function associateSpeaker(textData){
+    function construct(array){
+        let numbers = new Array(10);
+        numbers.fill(0);
+        for(i=0; i<array.length; i++){
+            numbers[parseInt(array[i].speakerTag)]++;
+        }
+        return numbers;
+    }
+
+    let numbers = construct(textData.results[0].alternatives[0].words);
+    max = numbers[0];
+    maxPos = 0;
+    for(i=0; i<numbers.length; i++){
+        if(numbers[i]>max){
+            max = numbers[i];
+            maxPos = i;
+        }
+    }
+
+    return maxPos;
+}
+
 function wordFrequency(text, words, frequency){
     let freqArray = [];
     for(word of words){
@@ -155,7 +231,6 @@ function wordFrequency(text, words, frequency){
         }
     }
 
-    console.log(freqArray);
     return freqArray;
 }
 
@@ -194,4 +269,61 @@ function participantPresent(text, participantNames){
     }
 
     return presentArray;
+}
+
+// Intent actions
+function decideAndDo(response){
+    console.log(response);
+    let intent = response.response.queryResult.intent.displayName;
+    let audioBytes = response.response.outputAudio;
+
+    playByteArray(audioBytes.data);
+
+    if(intent == 'Note Intent'){
+        takeNote();
+    }else if(intent == 'Action Intent'){
+        addtoActionItem();
+    }
+}
+
+function takeNote(){
+    startNote = true;
+}
+
+function addtoActionItem(){
+    startActionItem = true;
+}
+
+function playByteArray(byteArray) {
+    var arrayBuffer = new ArrayBuffer(byteArray.length);
+    var bufferView = new Uint8Array(arrayBuffer);
+    for (i = 0; i < byteArray.length; i++) {
+      bufferView[i] = byteArray[i];
+    }
+
+    context.decodeAudioData(arrayBuffer, function(buffer) {
+        buf = buffer;
+        play();
+    });
+}
+
+function play() {
+    var source = context.createBufferSource();
+    source.buffer = buf;
+    source.connect(context.destination);
+    source.start(0);
+}
+
+// End Meeting
+function endMeeting(){
+    jQuery.ajax({
+        type: 'POST',
+        url: '/meeting/end',
+        dataType: 'json',
+        contentType: 'application/json',
+        data: JSON.stringify({'notes': notesListDiv.innerHTML, 'actionItems': actionItemsDiv.innerHTML}),
+        success: function(e){
+            window.location.href = 'http://localhost:4000/';
+        }
+    });
 }
