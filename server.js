@@ -163,6 +163,24 @@ app.post('/meeting/end', (req, res)=>{
     sendMail('anjum.salman@outlook.com', text);
 });
 
+app.post('/meeting/create', (req, res)=>{
+    let subject = req.body.subject;
+    let location = req.body.location;
+    let datetime = req.body.datetime;
+    let owner = req.body.owner;
+    let agenda = req.body.agenda;
+    let participants = req.body.participants;
+
+    console.log(subject, location, datetime, owner, agenda);
+
+    // Success function
+    function success(){
+        res.json({'msg': 'Added new meeting'});
+    }
+
+    createMeeting(subject, location, datetime, owner, agenda, participants, success);
+});
+
 /*--------- Socket IO ---------*/
 io.on('connection', (socket)=>{
     console.log('Socket connection made');
@@ -227,7 +245,7 @@ io.on('connection', (socket)=>{
 
 server.listen(4000);
 
-// Database functions
+/*--------- Database Queries ---------*/
 function doLoginAction(psid, password, success, failure){
     let sql = 'SELECT * FROM user WHERE psid=? AND password=?';
     conn.query(sql, [psid, password], (error, rows, fields)=>{
@@ -242,13 +260,24 @@ function doLoginAction(psid, password, success, failure){
 }
 
 // Create meeting
-function createMeeting(subject_, location_, datetime_, owner_, agenda_, saveData){
-    let sql = "INSERT INTO meeting(subject,location,status,datetime_,owner,agenda) VALUES ('"+
-            subject_+"','"+location_+"','N','"+datetime_+"',"+owner_+",'"+agenda_+"')";
-    conn.query(sql, (err, results, fields)=>{
+function createMeeting(subject, location, datetime, owner, agenda, participants, success){
+    let sql = "INSERT INTO meeting(subject, location, datetime_, status, owner, agenda) VALUES(?,?,?,'Not started',(SELECT id FROM user WHERE email=?),?)";
+    let params = [subject, location, datetime, owner, agenda];
+    conn.query(sql, params, (err, results, fields)=>{
         if(err)
             console.log('Error:' + err.message);
-        saveData(results.insertId);
+        
+        // Add each participant to the table
+        let sql =""
+        for(p of participants){
+            sql+="CALL add_participant('"+ p + "'," + results.insertId + ");";
+        }
+        conn.query(sql, (err, results, fields)=>{
+            if(err)
+                console.log('Error while adding participants ', err.message);
+
+            success();
+        });
     });
 }
 
