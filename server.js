@@ -10,6 +10,9 @@ const cors = require('cors');
 
 let global_phrases = [];
 
+// Summarizer
+const summary = require('./summarizer.js');
+
 // MySQL setup
 let connection_details = {
     host: '35.240.182.121',
@@ -193,6 +196,15 @@ app.post('/meeting/new/:id', (req, res)=>{
     }
 });
 
+app.get('/transcript/:id', (req, res)=>{
+    let meeting_id = req.params['id'];
+    getTranscript(meeting_id, success);
+
+    function success(data){
+        res.send(transcript);
+    }    
+});
+
 app.post('/assistant', (req, res)=>{
     let queryText = req.body.query;
     console.log('Assistant required for query ', queryText);
@@ -217,7 +229,9 @@ app.get('/meeting/end/:id', (req, res)=>{
     let id = req.params['id'];
 
     function success(data){
-        res.render('end', {actionItems: data});
+        summary('https://localhost:4000/transcript/'+id, (result, failure)=>{
+            res.render('end', {actionItems: data, transcript:result.summary.join('\n')});
+        });
     }
     getActionItems(id, success);
 });
@@ -399,6 +413,15 @@ function getActionItems(meeting_id, success){
         console.log(rows);
         success(rows[0].action_items.split('<br>'));
     })
+}
+
+function getTranscript(meeting_id, success){
+    let sql = "SELECT transcript FROM meeting WHERE id=?";
+    conn.query(sql, [meeting_id], (err, rows, fields)=>{
+        if(err)
+            console.log('Error while getting transcript');
+        success(rows);
+    });
 }
 
 /*------- DialogFlow --------*/
