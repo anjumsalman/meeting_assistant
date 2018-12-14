@@ -3,6 +3,7 @@ let startTime = new Date().getTime();
 let lastSpeaker;
 let startNote = false;
 let startActionItem = false;
+let meetingStarted = false;
 
 // Audiostream configuration
 const constraints = {
@@ -142,6 +143,11 @@ socket.on('textData', (data)=>{
 // UI Events
 startButton.addEventListener('click', (e)=>{
     initRecording();
+    if(!meetingStarted){
+        endMeetingButton.style.visibility = 'visible';
+        meetingStarted = true;
+        startButton.innerText = 'Resume Transcript';
+    }
 });
 
 stopButton.addEventListener('click', (e)=>{
@@ -316,14 +322,22 @@ function play() {
 
 // End Meeting
 function endMeeting(){
+    console.log('Ending the meeting');
+    let meeting_id = parseInt(window.location.href.split('/').slice(-1)[0]);
+    socket.emit('speechEnd', '');
     jQuery.ajax({
         type: 'POST',
         url: '/meeting/end',
         dataType: 'json',
         contentType: 'application/json',
-        data: JSON.stringify({'notes': notesListDiv.innerHTML, 'actionItems': actionItemsDiv.innerHTML}),
+        data: JSON.stringify({'notes': notesListDiv.innerHTML,
+         'actionItems': actionItemsDiv.innerHTML,
+         'transcript': transcriptBody.innerHTML,
+         'meeting_id': meeting_id
+        }),
         success: function(e){
-            window.location.href = 'http://localhost:4000/';
+            console.log('Ended meeting successfully');
+            window.location.href = 'https://localhost:4000/meeting/end/' + meeting_id;
         }
     });
 }

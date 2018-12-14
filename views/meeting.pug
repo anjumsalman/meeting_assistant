@@ -6,19 +6,22 @@ html
         link(rel='stylesheet', href='/assets/css/meeting-style.css')
     body
         nav.top-nav
-            h3 Meeting Hub
-            button.meeting-start Start Meeting
-            button.meeting-end End Meeting
-            a(href='/logout')
-                button.logout Logout
+            div.left
+                h3 Meeting Hub
+            div.right
+                button.meeting-end End Meeting
+                button.meeting-start Start Meeting
+                a(href='/logout')
+                    button.logout Logout
 
         div.meeting-details
-            b #{subject}
-            br
+            h3 #{subject}
             p Location: #{location}
             p Status: #{status}
+            br
             each participant in participants
-                span.participant= participant.name 
+                span.participant= participant.name
+            span.participant.owner #{owner}
 
         div.grid-container        
             div.transcript-container

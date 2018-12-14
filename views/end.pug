@@ -1,0 +1,24 @@
+doctype html
+html
+    head
+        title Meeting ended
+        link(rel='stylesheet' href='https://fonts.googleapis.com/css?family=Open+Sans:400,700')
+        link(rel='stylesheet', href='/assets/css/end-style.css')
+    body
+        nav.top-nav
+            div.left
+                h3 Meeting Hub
+            div.right
+                a(href='/logout')
+                    button.logout Logout
+
+        div.action-items-container
+            h4 The following items will be added to Jira
+            each item in actionItems
+                div.action-item= item
+
+        a(href='/')
+            button.home Home
+
+        script(src='/assets/js/jquery.js')
+        script(src='/assets/js/end.js')

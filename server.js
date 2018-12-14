@@ -1,11 +1,14 @@
 const express = require('express')
 const fs = require('fs');
 const environmentVars = require('dotenv').config();
-const http = require('http');
+const https = require('https');
 const bodyParser = require('body-parser');
 const flash = require('connect-flash');
 const session = require('express-session');
 const mysql = require('mysql');
+const cors = require('cors');
+
+let global_phrases = [];
 
 // MySQL setup
 let connection_details = {
@@ -38,11 +41,30 @@ const speechClient = new speechApi.SpeechClient();
 
 // Express setup
 const app = express();
-const server = http.createServer(app);
+const httpsOptions = {
+    key: fs.readFileSync('./security/cert.key'),
+    cert: fs.readFileSync('./security/cert.pem')
+}
+const server = https.createServer(httpsOptions, app);
+
+// cors
+var whitelist = [
+    'https://localhost:4000',
+    'https://127.0.0.1:4000',
+];
+var corsOptions = {
+    origin: function(origin, callback){
+        var originIsWhitelisted = whitelist.indexOf(origin) !== -1;
+        callback(null, originIsWhitelisted);
+    },
+    credentials: true
+};
+app.use(cors(corsOptions));
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(flash());
-app.use(session({ cookie: { maxAge: 60000 }, 
+app.use(session({ cookie: { maxAge: 300000 }, 
     secret: 't0P_sEcrt',
     resave: false, 
     saveUninitialized: false}));
@@ -57,6 +79,8 @@ app.use('/assets', express.static(__dirname + '/public'));
 app.set('view engine', 'pug');
 
 /*--------- Views ---------*/
+app.options('*', cors());
+
 app.get('/', (req, res)=>{
     if(!req.session.user){
         res.redirect('/login');
@@ -64,9 +88,11 @@ app.get('/', (req, res)=>{
     }
 
     // Execute on successfully fetching list of meetings
-    function success(data){
-        let meetings = data;
-        res.render('index', {user: req.session.user, meetings:meetings});
+    function success(upcoming_meetings_, past_meetings_){
+        res.render('index', {user: req.session.user, 
+            upcoming_meetings: upcoming_meetings_, 
+            past_meetings: past_meetings_
+        });
     }
     
     getMeetingList(req.session.user, success);
@@ -99,9 +125,14 @@ app.post('/login', (req, res)=>{
 
     // On login success
     function success(){
-        req.session.user = psid;
-        return res.redirect('/');
-        return;
+        let sql = 'SELECT id, name FROM user WHERE psid=?';
+        conn.query(sql, [psid], (error, rows, fields)=>{
+            console.log(rows);
+            req.session.user = rows[0].id;
+            req.session.name_ = rows[0].name;
+            return res.redirect('/');
+            return;
+        });
     }
     // On login failure    
     function failure(){
@@ -130,21 +161,33 @@ app.post('/meeting/new/:id', (req, res)=>{
     let subject = req.body.subject;
     let location = req.body.location;
     let datetime = req.body.datetime;
-    let owner = req.session.user;
+    let status = req.body.status;
+    let owner = req.session.name_;
     let agenda = req.body.agenda.split(',');
     let id = req.params['id'];
+
+    global_phrases.concat(owner.split(' '));
 
     console.log('Getting Participants...');
     getParticipants(id, success);
 
     function success(data){
         console.log(data);
+        for(p of data){
+            global_phrases.concat(p.name.split(' '));
+        }
+
+        agenda.forEach((item)=>{
+            global_phrases.concat(item.split(' '));
+        });
+
         res.render('meeting', {subject: subject,
             location: location,
             datetime: datetime,
             owner: owner,
             agenda: agenda,
             id: id,
+            status: status,
             participants: data    
         });
     }
@@ -159,19 +202,34 @@ app.post('/assistant', (req, res)=>{
 app.post('/meeting/end', (req, res)=>{
     let notes = req.body.notes;
     let actionItems = req.body.actionItems;
-    let text = 'Notes:<br>' + notes + '<br>Action Items<br>' + actionItems;
-    sendMail('anjum.salman@outlook.com', text);
+    let meeting_id = req.body.meeting_id;
+    let transcript = req.body.transcript;
+    let text = '<b>Notes:</b><br>' + notes + '<br><b>Action Items:</b><br>' + actionItems;
+    saveMeeting(meeting_id, notes, actionItems, transcript, success);
+    
+    function success(){
+        sendMail('anjum.salman@outlook.com', text);
+        res.json({"msg": "Mail sent"});
+    }
+});
+
+app.get('/meeting/end/:id', (req, res)=>{
+    let id = req.params['id'];
+
+    function success(data){
+        res.render('end', {actionItems: data});
+    }
+    getActionItems(id, success);
 });
 
 app.post('/meeting/create', (req, res)=>{
+    console.log('Adding new meeting...')
     let subject = req.body.subject;
     let location = req.body.location;
     let datetime = req.body.datetime;
     let owner = req.body.owner;
     let agenda = req.body.agenda;
     let participants = req.body.participants;
-
-    console.log(subject, location, datetime, owner, agenda);
 
     // Success function
     function success(){
@@ -186,24 +244,6 @@ io.on('connection', (socket)=>{
     console.log('Socket connection made');
 
     let recognitionStream = null;
-
-    let recognitionMetadata = {
-        interactionType: 'DISCUSSION',
-        microphoneDistance: 'NEARFIELD',
-        recordingDeviceType: 'PC',
-      };
-      
-    let speechConfig = {
-        config: {
-            encoding: 'LINEAR16',
-            sampleRateHertz: 16000,
-            languageCode: 'en-IN',
-            profanityFilter: false,
-            enableSpeakerDiarization: true,
-            metadata: recognitionMetadata
-        },
-    interimResults: false
-    }
 
     socket.on('speechInit', (data)=>{
         console.log('Initializing recognition engine');
@@ -221,6 +261,27 @@ io.on('connection', (socket)=>{
     });
 
     function startRecognitionStream(socket, data){
+        let recognitionMetadata = {
+            interactionType: 'DISCUSSION',
+            microphoneDistance: 'NEARFIELD',
+            recordingDeviceType: 'PC',
+        };
+      
+        let speechConfig = {
+            config: {
+                encoding: 'LINEAR16',
+                sampleRateHertz: 16000,
+                languageCode: 'en-IN',
+                profanityFilter: false,
+                enableSpeakerDiarization: true,
+                metadata: recognitionMetadata,
+                speechContexts: [{
+                    phrases: global_phrases
+                }]
+            },
+            interimResults: false
+        }
+
         recognitionStream = speechClient.streamingRecognize(speechConfig)
         .on('error', console.error)
         .on('data', (data)=>{
@@ -289,10 +350,24 @@ function startMeeting(meeting_id){
 
 // Get meeting list
 function getMeetingList(owner, success){
-    let sql = 'SELECT * FROM meeting WHERE owner=?';
+    // First get upcoming meetings
+    let sql = "SELECT * FROM meeting WHERE owner=? AND status='Not started'";
     conn.query(sql, [owner], (error, rows, fields)=>{
-        if(rows.length>0)
-            success(rows);
+        let upcoming_meetings = []
+        if(rows.length>0){
+            upcoming_meetings = rows;
+        }
+        // Then get past meetings
+        let sql = "SELECT * FROM meeting WHERE owner=? AND status='Completed'";
+        conn.query(sql, [owner], (error, rows, fields)=>{
+            let past_meetings = []
+            if(rows.length>0){
+                past_meetings = rows;
+            }
+
+            success(upcoming_meetings, past_meetings);
+        });
+
     });
 }
 
@@ -307,7 +382,27 @@ function getParticipants(meeting_id, success){
     });
 }
 
-// Dailog Responses
+function saveMeeting(meeting_id, notes, actionItems, transcript, success){
+    let sql = "UPDATE meeting SET status='Completed', notes=?, action_items=?, transcript=? WHERE id=?";
+    conn.query(sql, [notes,actionItems,transcript,meeting_id], (err, rows, fields)=>{
+        if(err)
+            console.log('Error while updating table', err.message);
+        success();
+    })
+}
+
+function getActionItems(meeting_id, success){
+    let sql = "SELECT action_items FROM meeting WHERE id=?";
+    conn.query(sql, [meeting_id], (err, rows, fields)=>{
+        if(err)
+            console.log('Error while getting action items');
+        console.log(rows);
+        success(rows[0].action_items.split('<br>'));
+    })
+}
+
+/*------- DialogFlow --------*/
+// Dialog Responses
 async function dialog(res, textData, projectId){
     // A unique identifier for the given session
     const sessionId = uuid.v4();

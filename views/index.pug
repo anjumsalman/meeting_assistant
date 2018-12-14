@@ -10,9 +10,9 @@ html
             a(href="/logout")
                 button.logout Logout
 
-        div.history-container
-            h4 History
-            each meeting in meetings
+        div.upcoming-container
+            h4 Upcoming Meetings
+            each meeting in upcoming_meetings
                 div.meeting-item
                     b Subject: 
                     span= meeting.subject
@@ -25,13 +25,30 @@ html
                     br
                     b Status: 
                     span= meeting.status
-                    if(meeting.status=='N')
-                        form(action='meeting/new/'+meeting.id method='post')
-                            input(name='subject' value=meeting.subject hidden)
-                            input(name='location' value=meeting.location hidden)
-                            input(name='datetime' value=meeting.datetime_ hidden)
-                            input(name='agenda' value=meeting.agenda hidden)
-                            input(type='submit' value='Start Meeting')
-                    else
-                        a(href='/meeting/details/'+meeting.id)
-                            button Details
+                    form(action='meeting/new/'+meeting.id method='post')
+                        input(name='subject' value=meeting.subject hidden)
+                        input(name='location' value=meeting.location hidden)
+                        input(name='datetime' value=meeting.datetime_ hidden)
+                        input(name='agenda' value=meeting.agenda hidden)
+                        input(name='status' value=meeting.status hidden)
+                        input(type='submit' value='Start Meeting')
+
+
+        div.history-container
+            h4 Past Meetings
+            each meeting in past_meetings
+                div.meeting-item
+                    b Subject: 
+                    span= meeting.subject
+                    br
+                    b Location: 
+                    span= meeting.location
+                    br
+                    b Date/Time: 
+                    span= meeting.datetime_
+                    br
+                    b Status: 
+                    span= meeting.status
+                    br
+                    a(href='/meeting/details/'+meeting.id)
+                        button Details
